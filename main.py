@@ -19,6 +19,7 @@ from tvr.models.tokenization_clip import SimpleTokenizer as ClipTokenizer
 from tvr.dataloaders.data_dataloaders import DATALOADER_DICT
 from tvr.dataloaders.dataloader_msrvtt_retrieval import MSRVTTDataset
 from tvr.models.modeling import VTRModel, AllGather
+from tvr.models.modeling_qlora import TempMeQLoRA 
 from tvr.models.optimization_adamw import AdamW, get_cosine_schedule_with_warmup
 from tvr.utils.metrics import compute_metrics, tensor_text_to_video_metrics, tensor_video_to_text_sim
 
@@ -141,7 +142,8 @@ def set_seed_logger(args):
 
 
 def build_model(args):
-    model = VTRModel(args)
+    # model = VTRModel(args)
+    model = TempMeQLoRA(args)
     if args.init_model:
         if not exists(args.init_model):
             raise FileNotFoundError
@@ -217,15 +219,27 @@ def prep_optimizer(args, model, num_train_optimization_steps, local_rank):
     
     optimizer_parameters_prompt = []
     enabled_prompt = []
+    model.peft_model.print_trainable_parameters() 
+    """ original code"""
+    # for name, param in model.named_parameters():
+    #     if param.requires_grad:
+    #         enabled_prompt.append(name)
+    #         optimizer_parameters_prompt.append(param)
+    # logger.info(f"Tuned Parameters: {sorted(enabled_prompt)}")
+
+    # optimizer_grouped_params = [
+    #     {'params': optimizer_parameters_prompt, 'lr': args.clip_lr}
+    # ]
+    
+    """"for QLoRA"""
     for name, param in model.named_parameters():
         if param.requires_grad:
             enabled_prompt.append(name)
             optimizer_parameters_prompt.append(param)
-    logger.info(f"Tuned Parameters: {sorted(enabled_prompt)}")
+    logger.info(f"Tuned Parameters (QLoRA): {sorted(enabled_prompt)}")
 
     optimizer_grouped_params = [
-        {'params': optimizer_parameters_prompt, 'lr': args.clip_lr}
-    ]
+        {'params': optimizer_parameters_prompt, 'lr': args.clip_lr}]
 
     optimizer = AdamW(optimizer_grouped_params, weight_decay=args.weight_decay)
     num_warmup_steps = int(warmup_proportion * num_train_optimization_steps)
